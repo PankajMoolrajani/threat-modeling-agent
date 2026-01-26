@@ -11,5 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Mount src directory to /app
 COPY src/ .
 
+# Copy scripts directory
+COPY scripts/ ./scripts/
+
 # Default command (can be overridden)
 CMD ["python"]
