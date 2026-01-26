@@ -113,7 +113,8 @@ def check_neo4j_mcp() -> Tuple[bool, str]:
     except EnvironmentError as e:
         return False, str(e)
 
-    url = f"http://{host}:{port}/api/mcp"
+    # Use trailing slash to avoid 307 redirect
+    url = f"http://{host}:{port}/api/mcp/"
 
     try:
         # JSON-RPC request to list available tools
@@ -134,8 +135,18 @@ def check_neo4j_mcp() -> Tuple[bool, str]:
             response_body = response.read().decode('utf-8')
             
             if status_code == 200:
+                # Handle SSE (Server-Sent Events) response format
+                # The response may be in "event: message\ndata: {...}" format
+                json_data = response_body
+                if response_body.startswith("event:"):
+                    # Parse SSE format - extract the data line
+                    for line in response_body.split('\n'):
+                        if line.startswith("data:"):
+                            json_data = line[5:].strip()
+                            break
+                
                 try:
-                    result = json.loads(response_body)
+                    result = json.loads(json_data)
                     # Check for valid JSON-RPC response
                     if "result" in result:
                         tools = result.get("result", {}).get("tools", [])
