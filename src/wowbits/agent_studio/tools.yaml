@@ -1,0 +1,11 @@
+---
+kind: tool
+name: neo4j_cypher_mcp
+type: mcp
+description: Execute Cypher queries against the Neo4j graph database
+config:
+  server: neo4j-database
+  tools:
+    - read_neo4j_cypher
+    - write_neo4j_cypher
+    - get_neo4j_schema
