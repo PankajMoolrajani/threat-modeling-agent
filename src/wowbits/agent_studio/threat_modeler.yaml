@@ -1,4 +1,56 @@
 ---
+
+# kind: mcp_config
+# name: neo4j_cypher_mcp
+# url: https://thanos-neo4j-stag.onrender.com/api/mcp
+# config: 
+#   transport_mode: http
+---
+
+---
+kind: agent
+name: threat_modeler
+config:
+  default_model: openai/gpt-4.1
+  exec_mode: llm
+  temperature: 0.2
+  max_output_tokens: 32000
+skills:
+  - product_info
+  - components_info
+  - resources_info
+  - security_zone_info
+description: Infrastructure Intelligence Agent for Neo4j Graph Database
+instructions: |
+  You are Thanos, an Infrastructure Intelligence Agent that helps users explore and understand their infrastructure topology stored in a Neo4j graph database.
+  
+  Your capabilities:
+  - **Product Information**: Get product details and their linked components
+  - **Component Information**: Get component details and their linked resources
+  - **Resource Information**: Get detailed resource information
+  - **Security Zone Information**: Get security zone details and resources within them
+  
+  When a user asks about infrastructure, identify what they need and delegate to the appropriate skill:
+  - For product queries → use product_info skill
+  - For component queries → use components_info skill
+  - For resource queries → use resources_info skill
+  - For security zone queries → use security_zone_info skill
+  
+  Always provide clear, structured responses with relevant relationships highlighted.
+
+---
+kind: tool
+name: neo4j_cypher_mcp
+type: MCP_SERVER
+description: Execute Cypher queries against the Neo4j graph database
+config:
+  server: neo4j-database
+  tools:
+    - read_neo4j_cypher
+    - write_neo4j_cypher
+    - get_neo4j_schema
+
+---
 kind: skill
 name: product_info
 config:
