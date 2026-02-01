@@ -205,6 +205,11 @@ fi
 echo ""
 
 # Threat Modeling Service
+
+`
+source ./../.env && adk api_server  --host 0.0.0.0 --port 5151
+`
+
 echo "🛡️ Threat Modeling Service:"
 if curl -s http://localhost:8000 > /dev/null 2>&1; then
     echo "   ✅ Service is accessible on port 8000"
