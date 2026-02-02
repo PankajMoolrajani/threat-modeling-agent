@@ -226,6 +226,7 @@ def create_agent():
     session = get_db_manager().get_session()
     try:
         agent = session.get(Agent, UUID(agent_id))
+        agent.welcome_message = "Hello! I'm your Threat Modeler. I'll help you model threats for your system."
         if not agent:
             raise RuntimeError(f"Agent not found: {agent_id}")
         
