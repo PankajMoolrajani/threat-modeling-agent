@@ -1,0 +1,30 @@
+# Dependencies (installed fresh inside container)
+node_modules
+
+# Build output (rebuilt inside container)
+.next
+out
+build
+
+# Dev / editor files
+.DS_Store
+*.pem
+.env*
+.vscode
+.idea
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+.pnpm-debug.log*
+
+# Vercel
+.vercel
+
+# TypeScript build cache
+*.tsbuildinfo
+next-env.d.ts
+
+# Docker
+Dockerfile
+.dockerignore
