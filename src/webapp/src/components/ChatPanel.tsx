@@ -46,6 +46,17 @@ export default function ChatPanel() {
     async (userMessage: string) => {
       setIsLoading(true);
 
+      // Create a placeholder AI message that we update as chunks stream in
+      const aiMsgId = `ai-${Date.now()}`;
+      const aiPlaceholder: Message = {
+        id: aiMsgId,
+        sender: "ai",
+        senderName: "Security Architect AI",
+        content: "",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiPlaceholder]);
+
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -57,29 +68,85 @@ export default function ChatPanel() {
           }),
         });
 
-        const data = await res.json();
+        const contentType = res.headers.get("content-type") || "";
 
-        if (!res.ok) {
-          throw new Error(data.error || `Server responded with ${res.status}`);
+        if (contentType.includes("text/event-stream") && res.body) {
+          // ── Handle SSE streaming response ──────────────────────
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let fullText = "";
+          let sseBuffer = "";
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split("\n");
+            sseBuffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith("data:")) continue;
+
+              const jsonStr = trimmed.slice(5).trim();
+              if (!jsonStr) continue;
+
+              try {
+                const event = JSON.parse(jsonStr);
+
+                if (event.type === "session" && event.sessionId) {
+                  setSessionId(event.sessionId);
+                } else if (event.type === "chunk" && event.content) {
+                  fullText += event.content;
+                  // Update the placeholder message in real-time
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMsgId ? { ...msg, content: fullText } : msg,
+                    ),
+                  );
+                } else if (event.type === "error") {
+                  throw new Error(event.content || "Stream error from agent");
+                }
+                // type === "done" → loop will end when stream closes
+              } catch (e) {
+                if (e instanceof SyntaxError) continue; // skip malformed JSON
+                throw e;
+              }
+            }
+          }
+
+          // Parse structured data from the full response
+          if (fullText) {
+            parseAndAddFromResponse(fullText);
+          } else {
+            // Remove the empty placeholder and show an error instead
+            setMessages((prev) => prev.filter((msg) => msg.id !== aiMsgId));
+            throw new Error("Agent did not return any text response.");
+          }
+        } else {
+          // ── Handle JSON response (fallback) ────────────────────
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(
+              data.error || `Server responded with ${res.status}`,
+            );
+          }
+
+          if (data.sessionId) {
+            setSessionId(data.sessionId);
+          }
+
+          // Update the placeholder with the full reply
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMsgId ? { ...msg, content: data.reply } : msg,
+            ),
+          );
+
+          parseAndAddFromResponse(data.reply);
         }
-
-        // Store session id for follow‑up messages
-        if (data.sessionId) {
-          setSessionId(data.sessionId);
-        }
-
-        // Add agent reply
-        const aiMessage: Message = {
-          id: `ai-${Date.now()}`,
-          sender: "ai",
-          senderName: "Security Architect AI",
-          content: data.reply,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, aiMessage]);
-
-        // Parse and add structured data to output table
-        parseAndAddFromResponse(data.reply);
       } catch (err: unknown) {
         const errMsg =
           err instanceof Error ? err.message : "Something went wrong";
@@ -97,20 +164,34 @@ export default function ChatPanel() {
             "3. wowbits run agent thanos";
         }
 
-        const errorMessage: Message = {
-          id: `err-${Date.now()}`,
-          sender: "ai",
-          senderName: "Security Architect AI",
-          content: displayMsg,
-          timestamp: new Date(),
-          isError: true,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        // If the placeholder is empty, replace it with the error.
+        // Otherwise, append an error message separately.
+        setMessages((prev) => {
+          const placeholder = prev.find((msg) => msg.id === aiMsgId);
+          if (placeholder && !placeholder.content) {
+            return prev.map((msg) =>
+              msg.id === aiMsgId
+                ? { ...msg, content: displayMsg, isError: true }
+                : msg,
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: `err-${Date.now()}`,
+              sender: "ai" as const,
+              senderName: "Security Architect AI",
+              content: displayMsg,
+              timestamp: new Date(),
+              isError: true,
+            },
+          ];
+        });
       } finally {
         setIsLoading(false);
       }
     },
-    [sessionId]
+    [sessionId, parseAndAddFromResponse],
   );
 
   // ─── handle send button / enter key ───
@@ -140,7 +221,7 @@ export default function ChatPanel() {
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend],
   );
 
   const handleQuickAction = useCallback(
@@ -149,7 +230,7 @@ export default function ChatPanel() {
       setInputValue(action);
       setTimeout(() => inputRef.current?.focus(), 0);
     },
-    [isLoading]
+    [isLoading],
   );
 
   // ─── helper: format timestamp ───
@@ -168,14 +249,7 @@ export default function ChatPanel() {
               <rect x="3" y="3" width="7" height="7" rx="1.5" fill="white" />
               <rect x="14" y="3" width="7" height="7" rx="1.5" fill="white" />
               <rect x="3" y="14" width="7" height="7" rx="1.5" fill="white" />
-              <rect
-                x="14"
-                y="14"
-                width="7"
-                height="7"
-                rx="1.5"
-                fill="white"
-              />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" fill="white" />
             </svg>
           </div>
           <div>
@@ -201,55 +275,6 @@ export default function ChatPanel() {
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto px-5 py-5 space-y-5"
       >
-        {/* Empty state */}
-        {messages.length === 0 && !isLoading && (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#4fc3f7]/20 to-[#00b4d8]/20 flex items-center justify-center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                <rect
-                  x="3"
-                  y="3"
-                  width="7"
-                  height="7"
-                  rx="1.5"
-                  fill="#00b4d8"
-                />
-                <rect
-                  x="14"
-                  y="3"
-                  width="7"
-                  height="7"
-                  rx="1.5"
-                  fill="#00b4d8"
-                />
-                <rect
-                  x="3"
-                  y="14"
-                  width="7"
-                  height="7"
-                  rx="1.5"
-                  fill="#00b4d8"
-                />
-                <rect
-                  x="14"
-                  y="14"
-                  width="7"
-                  height="7"
-                  rx="1.5"
-                  fill="#00b4d8"
-                />
-              </svg>
-            </div>
-            <p className="text-gray-400 text-sm text-center">
-              Describe your architecture to get started.
-              <br />
-              <span className="text-[12px] text-gray-300">
-                Powered by wowbits &amp; Thanos agent
-              </span>
-            </p>
-          </div>
-        )}
-
         {/* Message list */}
         {messages.map((message) => (
           <div key={message.id} className="space-y-1.5">
@@ -329,18 +354,26 @@ export default function ChatPanel() {
                   message.sender === "user"
                     ? "bg-[#00b4d8] text-white rounded-2xl rounded-br-md"
                     : message.isError
-                    ? "bg-red-50 text-red-700 rounded-2xl rounded-bl-md border border-red-200"
-                    : "bg-[#f0f9ff] text-gray-700 rounded-2xl rounded-bl-md border border-[#e0f2fe]"
+                      ? "bg-red-50 text-red-700 rounded-2xl rounded-bl-md border border-red-200"
+                      : "bg-[#f0f9ff] text-gray-700 rounded-2xl rounded-bl-md border border-[#e0f2fe]"
                 }`}
               >
-                <p className="whitespace-pre-line">{message.content}</p>
+                {message.sender === "ai" && !message.content && isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 size={16} className="text-[#00b4d8] animate-spin" />
+                    <span className="text-[13px] text-gray-400">
+                      Agent is thinking…
+                    </span>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-line">{message.content}</p>
+                )}
               </div>
             </div>
           </div>
         ))}
 
-        {/* ── Typing / loading indicator ── */}
-        {isLoading && (
+        {isLoading && !messages.some((m) => m.sender === "ai" && !m.content) && (
           <div className="space-y-1.5">
             <p className="text-[11px] text-gray-400 font-medium pl-0">
               Security Architect AI
