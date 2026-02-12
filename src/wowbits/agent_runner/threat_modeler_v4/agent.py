@@ -14,7 +14,7 @@ from google.genai import types
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-agent_id = "90656f48-34c8-4e29-9a07-c3b572a1ba8e"
+agent_id = "d9afc253-49ea-4f99-9512-1473b27dfbf5"
 
 
 def load_python_function(session, python_function_id):
