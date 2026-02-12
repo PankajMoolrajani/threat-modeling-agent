@@ -115,6 +115,7 @@ def check_neo4j_mcp() -> Tuple[bool, str]:
 
     # Use trailing slash to avoid 307 redirect
     url = f"http://{host}:{port}/api/mcp/"
+    print(f"Checking connectivity to Neo4j MCP server at {url}")
 
     try:
         # JSON-RPC request to list available tools
