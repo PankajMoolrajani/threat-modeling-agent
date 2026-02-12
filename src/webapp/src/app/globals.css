@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fafbfc;
+  --foreground: #1e293b;
+  --primary: #00b4d8;
+  --primary-dark: #0096c7;
+  --primary-light: #90e0ef;
+  --secondary: #64748b;
+  --accent: #06b6d4;
+  --card-bg: #ffffff;
+  --border: #e2e8f0;
+  --chat-user-bg: #00b4d8;
+  --chat-ai-bg: #f0f9ff;
+  --canvas-bg: #fafbfc;
+  --grid-color: #e2e8f0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-card-bg: var(--card-bg);
+  --color-border: var(--border);
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Canvas grid pattern - dots */
+.canvas-grid {
+  background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Smooth transitions */
+button, a, input {
+  transition: all 0.15s ease;
+}
+
+/* Focus styles */
+button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Remove default input borders and focus outlines */
+input {
+  border: none;
+  outline: none;
+}
+
+input:focus,
+input:focus-visible,
+input:active {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}

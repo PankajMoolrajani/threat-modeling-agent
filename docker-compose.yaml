@@ -1,4 +1,22 @@
 services:
+  webapp:
+    build:
+      context: ./src/webapp
+      dockerfile: Dockerfile
+    container_name: webapp
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Use host.docker.internal to connect to agent running on host machine
+      # For Docker-only setup, change to: http://wowbits-adkweb:8000
+      - AGENT_API_URL=http://host.docker.internal:8000
+      - AGENT_APP_NAME=thanos
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - threat-modeling-network
+
   threat-modeling-service:
     build:
       context: .
@@ -50,15 +68,16 @@ services:
       - NEO4J_AUTH=neo4j/password123
       - NEO4J_PLUGINS=["apoc"]
     ports:
-      - "7474:7474"  # HTTP
-      - "7687:7687"  # Bolt
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
     volumes:
       - ./data/neo4j/data:/data
       - ./data/neo4j/logs:/logs
     networks:
       - threat-modeling-network
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "password123", "RETURN 1"]
+      test:
+        ["CMD", "cypher-shell", "-u", "neo4j", "-p", "password123", "RETURN 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -75,7 +94,7 @@ services:
       - NEO4J_MCP_SERVER_ALLOWED_HOSTS=*
       - NEO4J_TRANSPORT=http
     ports:
-      - "8000:8000"  # MCP Server endpoint
+      - "8000:8000" # MCP Server endpoint
     depends_on:
       neo4j:
         condition: service_healthy
