@@ -17,7 +17,12 @@ interface Message {
 
 /* ────────────── constants ────────────── */
 
-const quickActions = ["Add Frontend SPA", "Define Auth Flow", "Mark External"];
+const quickActions = [
+  "Add a new product",
+  "Add a new component",
+  "Identify threats",
+  "Suggest mitigations for threats"
+];
 
 /* ────────────── component ────────────── */
 
@@ -26,7 +31,7 @@ export default function ChatPanel() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>();
-  const { parseAndAddFromResponse } = useOutput();
+  const { parseResponse } = useOutput();
 
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -118,7 +123,7 @@ export default function ChatPanel() {
 
           // Parse structured data from the full response
           if (fullText) {
-            parseAndAddFromResponse(fullText);
+            parseResponse(fullText);
           } else {
             // Remove the empty placeholder and show an error instead
             setMessages((prev) => prev.filter((msg) => msg.id !== aiMsgId));
@@ -145,7 +150,7 @@ export default function ChatPanel() {
             ),
           );
 
-          parseAndAddFromResponse(data.reply);
+          parseResponse(data.reply);
         }
       } catch (err: unknown) {
         const errMsg =
@@ -191,7 +196,7 @@ export default function ChatPanel() {
         setIsLoading(false);
       }
     },
-    [sessionId, parseAndAddFromResponse],
+    [sessionId, parseResponse],
   );
 
   // ─── handle send button / enter key ───

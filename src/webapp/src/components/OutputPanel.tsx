@@ -1,306 +1,439 @@
 "use client";
 
-import { useRef, useEffect } from "react";
-import { useOutput, OutputEntry } from "@/context/OutputContext";
+import { useState, useMemo } from "react";
 import {
-  Package,
-  Puzzle,
-  Database,
-  Shield,
   Trash2,
-  Table,
+  X,
+  Search,
+  Package,
+  Cpu,
+  Server,
+  ShieldCheck,
+  AlertTriangle,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  LayoutList,
 } from "lucide-react";
+import { useOutput, type EntryCategory, type OutputEntry } from "@/context/OutputContext";
 
-/* ────────────── types ────────────── */
+/* ════════════════════════════════════════════════════════════
+   Category visual config
+   ════════════════════════════════════════════════════════════ */
 
-interface ColumnDef {
-  key: string;
-  label: string;
-  width?: string;
-}
-
-/* ────────────── category configs ────────────── */
-
-const categoryConfig: Record<
-  OutputEntry["type"],
-  {
-    title: string;
-    icon: React.ReactNode;
-    headerBg: string;
-    headerText: string;
-    iconBg: string;
-    columns: ColumnDef[];
-  }
+const CATEGORY_META: Record<
+  EntryCategory,
+  { label: string; color: string; bg: string; border: string; icon: typeof Package }
 > = {
   product: {
-    title: "Products",
-    icon: <Package size={16} className="text-white" />,
-    headerBg: "bg-gradient-to-r from-[#e0f7fa] to-[#b2ebf2]",
-    headerText: "text-[#00838f]",
-    iconBg: "bg-[#00b4d8]",
-    columns: [
-      { key: "id", label: "Product ID", width: "w-[120px]" },
-      { key: "name", label: "Name" },
-      { key: "description", label: "Description" },
-      { key: "status", label: "Status", width: "w-[100px]" },
-    ],
+    label: "Product",
+    color: "text-blue-600",
+    bg: "bg-blue-50",
+    border: "border-blue-200",
+    icon: Package,
   },
   component: {
-    title: "Components",
-    icon: <Puzzle size={16} className="text-white" />,
-    headerBg: "bg-gradient-to-r from-emerald-50 to-emerald-100",
-    headerText: "text-emerald-700",
-    iconBg: "bg-emerald-500",
-    columns: [
-      { key: "id", label: "Component ID", width: "w-[120px]" },
-      { key: "name", label: "Name" },
-      { key: "type", label: "Type", width: "w-[120px]" },
-      { key: "parent_product", label: "Parent Product", width: "w-[150px]" },
-    ],
+    label: "Component",
+    color: "text-violet-600",
+    bg: "bg-violet-50",
+    border: "border-violet-200",
+    icon: Cpu,
   },
   resource: {
-    title: "Resources",
-    icon: <Database size={16} className="text-white" />,
-    headerBg: "bg-gradient-to-r from-amber-50 to-amber-100",
-    headerText: "text-amber-700",
-    iconBg: "bg-amber-500",
-    columns: [
-      { key: "id", label: "Resource ID", width: "w-[120px]" },
-      { key: "name", label: "Name" },
-      { key: "type", label: "Type", width: "w-[120px]" },
-      { key: "location", label: "Location", width: "w-[150px]" },
-    ],
+    label: "Resource",
+    color: "text-emerald-600",
+    bg: "bg-emerald-50",
+    border: "border-emerald-200",
+    icon: Server,
   },
   security_zone: {
-    title: "Security Zones",
-    icon: <Shield size={16} className="text-white" />,
-    headerBg: "bg-gradient-to-r from-purple-50 to-purple-100",
-    headerText: "text-purple-700",
-    iconBg: "bg-purple-500",
-    columns: [
-      { key: "id", label: "Zone ID", width: "w-[120px]" },
-      { key: "name", label: "Name" },
-      { key: "trust_level", label: "Trust Level", width: "w-[120px]" },
-      { key: "description", label: "Description" },
-    ],
+    label: "Security Zone",
+    color: "text-amber-600",
+    bg: "bg-amber-50",
+    border: "border-amber-200",
+    icon: ShieldCheck,
+  },
+  threat: {
+    label: "Threat",
+    color: "text-red-600",
+    bg: "bg-red-50",
+    border: "border-red-200",
+    icon: AlertTriangle,
   },
   info: {
-    title: "Other",
-    icon: <Table size={16} className="text-white" />,
-    headerBg: "bg-gradient-to-r from-gray-50 to-gray-100",
-    headerText: "text-gray-600",
-    iconBg: "bg-gray-400",
-    columns: [
-      { key: "name", label: "Name" },
-      { key: "summary", label: "Summary" },
-    ],
+    label: "Info",
+    color: "text-slate-600",
+    bg: "bg-slate-50",
+    border: "border-slate-200",
+    icon: Info,
   },
 };
 
-/* ────────────── helper: get cell value ────────────── */
+const CATEGORY_ORDER: EntryCategory[] = [
+  "product",
+  "component",
+  "resource",
+  "security_zone",
+  "threat",
+  "info",
+];
 
-function getCellValue(entry: OutputEntry, key: string): string {
-  if (key === "name") {
-    return entry.name || "—";
-  }
-  
-  if (key === "id") {
-    const val = entry.details.id || entry.details.product_id || 
-                entry.details.component_id || entry.details.resource_id || 
-                entry.details.zone_id || "—";
-    return String(val);
-  }
-  
-  // Handle "type" column - look for subtype fields first
-  if (key === "type") {
-    const val = entry.details.component_type || 
-                entry.details.resource_type || 
-                entry.details.subtype ||
-                entry.details.type || "—";
-    return String(val);
-  }
-  
-  const val = entry.details[key];
-  if (val === null || val === undefined || val === "") {
-    return "—";
-  }
-  return String(val);
+/* ════════════════════════════════════════════════════════════
+   Format helpers
+   ════════════════════════════════════════════════════════════ */
+
+function formatTime(d: Date) {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/* ────────────── Category Table Component ────────────── */
+function humanKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-function CategoryTable({
-  type,
-  entries,
+/* ════════════════════════════════════════════════════════════
+   Entry card
+   ════════════════════════════════════════════════════════════ */
+
+function EntryCard({
+  entry,
+  onRemove,
 }: {
-  type: OutputEntry["type"];
-  entries: OutputEntry[];
+  entry: OutputEntry;
+  onRemove: (id: string) => void;
 }) {
-  const config = categoryConfig[type];
+  const [expanded, setExpanded] = useState(false);
+  const meta = CATEGORY_META[entry.category];
+  const Icon = meta.icon;
 
-  if (entries.length === 0) return null;
+  // Gather displayable detail keys (skip id, type, entity_type)
+  const detailKeys = Object.keys(entry.details).filter(
+    (k) => !["id", "type", "entity_type"].includes(k),
+  );
+  const hasDetails = detailKeys.length > 0;
+
+  // For info entries, show summary inline
+  const summary = entry.details.summary;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      {/* Category Header */}
+    <div
+      className={`group relative rounded-xl border ${meta.border} ${meta.bg}/40 transition-all duration-200 hover:shadow-md hover:border-opacity-80`}
+    >
+      {/* Header row */}
       <div
-        className={`${config.headerBg} px-4 py-3 flex items-center gap-3 border-b border-gray-100`}
+        className="flex items-start gap-3 px-4 py-3 cursor-pointer select-none"
+        onClick={() => hasDetails && setExpanded((p) => !p)}
       >
+        {/* Icon */}
         <div
-          className={`w-8 h-8 rounded-lg ${config.iconBg} flex items-center justify-center shadow-sm`}
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${meta.bg} ${meta.color}`}
         >
-          {config.icon}
+          <Icon size={16} />
         </div>
-        <div className="flex items-center gap-2">
-          <h3 className={`font-semibold text-[14px] ${config.headerText}`}>
-            {config.title}
-          </h3>
-          <span className={`text-[12px] ${config.headerText} opacity-70`}>
-            ({entries.length})
+
+        {/* Name + badge */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-800 text-[14px] truncate">
+              {entry.name}
+            </span>
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.bg} ${meta.color}`}
+            >
+              {meta.label}
+            </span>
+          </div>
+
+          {/* Summary for info entries */}
+          {summary && typeof summary === "string" && (
+            <p className="text-[13px] text-gray-500 mt-1 line-clamp-2 leading-snug">
+              {summary}
+            </p>
+          )}
+
+          {/* Compact detail preview when collapsed */}
+          {!expanded && hasDetails && !summary && (
+            <p className="text-[12px] text-gray-400 mt-0.5 truncate">
+              {detailKeys.slice(0, 3).map((k) => `${humanKey(k)}: ${entry.details[k]}`).join(" · ")}
+              {detailKeys.length > 3 && ` +${detailKeys.length - 3} more`}
+            </p>
+          )}
+        </div>
+
+        {/* Right side controls */}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-[11px] text-gray-300 font-mono">
+            {formatTime(entry.timestamp)}
           </span>
+
+          {hasDetails && (
+            <button
+              className="p-1 rounded-md text-gray-300 hover:text-gray-500 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((p) => !p);
+              }}
+            >
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+
+          <button
+            className="p-1 rounded-md text-gray-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(entry.id);
+            }}
+          >
+            <X size={14} />
+          </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              {config.columns.map((col) => (
-                <th
-                  key={col.key}
-                  className={`text-left px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider ${
-                    col.width || ""
-                  }`}
-                >
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry, index) => (
-              <tr
-                key={entry.id}
-                className={`hover:bg-gray-50/50 transition-colors ${
-                  index !== entries.length - 1
-                    ? "border-b border-gray-100"
-                    : ""
-                }`}
-              >
-                {config.columns.map((col) => (
-                  <td
-                    key={col.key}
-                    className={`px-4 py-3 text-[13px] text-gray-700 ${
-                      col.width || ""
-                    }`}
-                  >
-                    <span
-                      className={
-                        col.key === "name"
-                          ? "font-medium text-gray-800"
-                          : col.key === "id"
-                          ? "font-mono text-[12px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded"
-                          : ""
-                      }
-                    >
-                      {getCellValue(entry, col.key)}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Expanded details */}
+      {expanded && hasDetails && (
+        <div className="px-4 pb-3 pt-0 ml-11">
+          <div className="border-t border-gray-100 pt-2.5 space-y-1.5">
+            {detailKeys.map((key) => {
+              const val = entry.details[key];
+              return (
+                <div key={key} className="flex gap-2 text-[13px]">
+                  <span className="text-gray-400 font-medium shrink-0 min-w-[100px]">
+                    {humanKey(key)}
+                  </span>
+                  <span className="text-gray-700 break-all">
+                    {val === null ? (
+                      <span className="text-gray-300 italic">null</span>
+                    ) : typeof val === "boolean" ? (
+                      <span
+                        className={val ? "text-emerald-600" : "text-red-500"}
+                      >
+                        {String(val)}
+                      </span>
+                    ) : (
+                      String(val)
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   Main OutputPanel
+   ════════════════════════════════════════════════════════════ */
+
+export default function OutputPanel() {
+  const { entries, removeEntry, clearAll } = useOutput();
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<EntryCategory | "all">("all");
+
+  // Filtered + searched entries
+  const filtered = useMemo(() => {
+    let list = entries;
+    if (activeFilter !== "all") {
+      list = list.filter((e) => e.category === activeFilter);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          Object.values(e.details).some(
+            (v) => v !== null && String(v).toLowerCase().includes(q),
+          ),
+      );
+    }
+    return list;
+  }, [entries, activeFilter, search]);
+
+  // Category counts for badges
+  const counts = useMemo(() => {
+    const map: Record<string, number> = { all: entries.length };
+    for (const e of entries) {
+      map[e.category] = (map[e.category] || 0) + 1;
+    }
+    return map;
+  }, [entries]);
+
+  /* ════════ RENDER ════════ */
+  return (
+    <div className="w-[60%] bg-[#fafbfc] flex flex-col h-full">
+      {/* ── Header ── */}
+      <div className="px-5 py-4 border-b border-gray-100 bg-white">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#4fc3f7] to-[#00b4d8] text-white shadow-sm">
+              <LayoutList size={18} />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-800 text-[15px]">
+                Output Results
+              </h2>
+              <p className="text-[12px] text-gray-400">
+                {entries.length === 0
+                  ? "No entries yet"
+                  : `${entries.length} ${entries.length === 1 ? "entry" : "entries"} discovered`}
+              </p>
+            </div>
+          </div>
+
+          {entries.length > 0 && (
+            <button
+              onClick={clearAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-red-500 hover:text-white hover:bg-red-500 rounded-lg border border-red-200 hover:border-red-500 transition-all duration-200"
+            >
+              <Trash2 size={13} />
+              Clear All
+            </button>
+          )}
+        </div>
+
+        {/* Search + filter row */}
+        {entries.length > 0 && (
+          <div className="mt-3 space-y-2.5">
+            {/* Search */}
+            <div className="relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search entries…"
+                className="w-full pl-9 pr-3 py-2 bg-gray-50 rounded-lg text-[13px] text-gray-700 placeholder-gray-300 border border-gray-200 focus:bg-white focus:border-[#00b4d8]/40 transition-all"
+              />
+            </div>
+
+            {/* Category filter pills */}
+            <div className="flex gap-1.5 flex-wrap">
+              <FilterPill
+                label="All"
+                count={counts.all}
+                active={activeFilter === "all"}
+                onClick={() => setActiveFilter("all")}
+              />
+              {CATEGORY_ORDER.map((cat) =>
+                counts[cat] ? (
+                  <FilterPill
+                    key={cat}
+                    label={CATEGORY_META[cat].label}
+                    count={counts[cat]}
+                    active={activeFilter === cat}
+                    color={CATEGORY_META[cat].color}
+                    bg={CATEGORY_META[cat].bg}
+                    onClick={() =>
+                      setActiveFilter(activeFilter === cat ? "all" : cat)
+                    }
+                  />
+                ) : null,
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Entry list ── */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2.5">
+        {filtered.length > 0 ? (
+          filtered.map((entry) => (
+            <EntryCard key={entry.id} entry={entry} onRemove={removeEntry} />
+          ))
+        ) : entries.length > 0 ? (
+          /* Search/filter returned nothing */
+          <EmptySearch onClear={() => { setSearch(""); setActiveFilter("all"); }} />
+        ) : (
+          /* No entries at all */
+          <EmptyState />
+        )}
       </div>
     </div>
   );
 }
 
-/* ────────────── main component ────────────── */
+/* ════════════════════════════════════════════════════════════
+   Sub-components
+   ════════════════════════════════════════════════════════════ */
 
-export default function OutputPanel() {
-  const { outputs, clearOutputs } = useOutput();
-  const tableEndRef = useRef<HTMLDivElement>(null);
-
-  // Group outputs by type
-  const products = outputs.filter((o) => o.type === "product");
-  const components = outputs.filter((o) => o.type === "component");
-  const resources = outputs.filter((o) => o.type === "resource");
-  const securityZones = outputs.filter((o) => o.type === "security_zone");
-  const others = outputs.filter((o) => o.type === "info");
-
-  const hasAnyEntries = outputs.length > 0;
-
-  // Auto-scroll to bottom when new outputs arrive
-  useEffect(() => {
-    tableEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [outputs]);
-
+function FilterPill({
+  label,
+  count,
+  active,
+  color,
+  bg,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  color?: string;
+  bg?: string;
+  onClick: () => void;
+}) {
   return (
-    <div className="w-[60%] bg-[#fafbfc] flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-white py-4 flex items-center justify-between border-b border-gray-100 px-6">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#4fc3f7] to-[#00b4d8] flex items-center justify-center shadow-sm">
-            <Table size={18} className="text-white" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-gray-800 text-[15px]">
-              Output Results
-            </h2>
-            <p className="text-[12px] text-gray-400">
-              {outputs.length} total{" "}
-              {outputs.length === 1 ? "entry" : "entries"}
-            </p>
-          </div>
-        </div>
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all duration-150 ${
+        active
+          ? `${bg ?? "bg-[#e0f7fa]"} ${color ?? "text-[#00838f]"} border-current`
+          : "bg-white text-gray-400 border-gray-200 hover:text-gray-600 hover:border-gray-300"
+      }`}
+    >
+      {label}
+      <span
+        className={`text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center ${
+          active
+            ? "bg-white/60 text-current"
+            : "bg-gray-100 text-gray-400"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
 
-        {hasAnyEntries && (
-          <button
-            onClick={clearOutputs}
-            className="flex items-center gap-2 px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg font-medium text-[12px] transition-all"
-          >
-            <Trash2 size={14} />
-            Clear All
-          </button>
-        )}
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center mb-4">
+        <LayoutList size={28} className="text-gray-300" />
       </div>
+      <h3 className="text-[15px] font-semibold text-gray-400 mb-1">
+        No output yet
+      </h3>
+      <p className="text-[13px] text-gray-300 max-w-[280px] leading-relaxed">
+        Start a conversation with the AI agent in the chat panel. Discovered
+        products, components, resources, and threats will appear here.
+      </p>
+    </div>
+  );
+}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {!hasAnyEntries ? (
-          /* Empty State */
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#4fc3f7]/20 to-[#00b4d8]/20 flex items-center justify-center">
-              <Table size={28} className="text-[#00b4d8]" />
-            </div>
-            <div className="text-center">
-              <p className="text-gray-500 text-[14px] font-medium">
-                No output yet
-              </p>
-              <p className="text-gray-400 text-[13px] mt-1">
-                Chat with the AI to generate architecture insights
-              </p>
-            </div>
-          </div>
-        ) : (
-          /* Category Tables */
-          <div className="space-y-5">
-            <CategoryTable type="product" entries={products} />
-            <CategoryTable type="component" entries={components} />
-            <CategoryTable type="resource" entries={resources} />
-            <CategoryTable type="security_zone" entries={securityZones} />
-
-            {/* Info/Other entries only shown if there are some */}
-            {others.length > 0 && (
-              <CategoryTable type="info" entries={others} />
-            )}
-
-            <div ref={tableEndRef} />
-          </div>
-        )}
-      </div>
+function EmptySearch({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+      <Search size={28} className="text-gray-300 mb-3" />
+      <h3 className="text-[15px] font-semibold text-gray-400 mb-1">
+        No matches
+      </h3>
+      <p className="text-[13px] text-gray-300 mb-4">
+        Try a different search or filter.
+      </p>
+      <button
+        onClick={onClear}
+        className="px-4 py-1.5 text-[12px] font-medium text-[#00b4d8] border border-[#00b4d8]/30 rounded-lg hover:bg-[#e0f7fa] transition-colors"
+      >
+        Clear filters
+      </button>
     </div>
   );
 }

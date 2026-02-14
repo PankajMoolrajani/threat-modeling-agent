@@ -1,309 +1,236 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+} from "react";
 
-/* ────────────── types ────────────── */
+/* ════════════════════════════════════════════════════════════
+   Types
+   ════════════════════════════════════════════════════════════ */
+
+export type EntryCategory =
+  | "product"
+  | "component"
+  | "resource"
+  | "security_zone"
+  | "threat"
+  | "info";
 
 export interface OutputEntry {
   id: string;
-  type: "product" | "component" | "resource" | "security_zone" | "info";
+  category: EntryCategory;
   name: string;
   details: Record<string, string | number | boolean | null>;
   timestamp: Date;
 }
 
 interface OutputContextType {
-  outputs: OutputEntry[];
-  addOutput: (entry: Omit<OutputEntry, "id" | "timestamp">) => void;
-  clearOutputs: () => void;
-  parseAndAddFromResponse: (response: string) => void;
+  /** All parsed output entries (newest first). */
+  entries: OutputEntry[];
+  /** Manually add a single entry. */
+  addEntry: (entry: Omit<OutputEntry, "id" | "timestamp">) => void;
+  /** Remove a single entry by id. */
+  removeEntry: (id: string) => void;
+  /** Clear every entry. */
+  clearAll: () => void;
+  /** Parse an agent response string and add any discovered entries. */
+  parseResponse: (response: string) => void;
 }
 
 const OutputContext = createContext<OutputContextType | undefined>(undefined);
 
-/* ────────────── helper: generate unique ID ────────────── */
+/* ════════════════════════════════════════════════════════════
+   Helpers
+   ════════════════════════════════════════════════════════════ */
 
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+let _counter = 0;
+function uid(): string {
+  return `e-${Date.now()}-${++_counter}`;
 }
 
-/* ────────────── helper: extract JSON from response ────────────── */
+/* ---------- JSON extraction ---------- */
 
-function extractJSON(text: string): object[] {
-  const results: object[] = [];
-  
-  // 1. First try to find JSON in code blocks (most reliable)
-  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
-  let match;
-  
-  while ((match = codeBlockRegex.exec(text)) !== null) {
-    const content = match[1].trim();
+function extractJSON(text: string): Record<string, unknown>[] {
+  const results: Record<string, unknown>[] = [];
+
+  // 1 — fenced code-blocks
+  const codeRe = /```(?:json)?\s*([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = codeRe.exec(text)) !== null) {
     try {
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        results.push(...parsed);
-      } else if (typeof parsed === "object" && parsed !== null) {
-        results.push(parsed);
-      }
-    } catch {
-      // Not valid JSON in code block, skip
-    }
+      const p = JSON.parse(m[1].trim());
+      if (Array.isArray(p)) results.push(...p);
+      else if (p && typeof p === "object") results.push(p);
+    } catch { /* skip */ }
   }
-  
-  // If we found JSON in code blocks, return immediately
-  if (results.length > 0) {
-    return results;
-  }
-  
-  // 2. Fallback: Try to find a JSON array in the text
-  const arrayMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-  if (arrayMatch) {
+  if (results.length) return results;
+
+  // 2 — bare array
+  const arrMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+  if (arrMatch) {
     try {
-      const parsed = JSON.parse(arrayMatch[0]);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    } catch {
-      // Not valid JSON array
-    }
+      const p = JSON.parse(arrMatch[0]);
+      if (Array.isArray(p)) return p;
+    } catch { /* skip */ }
   }
-  
-  // 3. Last resort: Find individual objects with type field
-  const objectRegex = /\{[^{}]*"type"\s*:\s*"[^"]+?"[^{}]*\}/g;
-  let objMatch;
-  
-  while ((objMatch = objectRegex.exec(text)) !== null) {
+
+  // 3 — individual objects with "type" or "name"
+  const objRe = /\{[^{}]*"(?:type|name)"\s*:\s*"[^"]+?"[^{}]*\}/g;
+  while ((m = objRe.exec(text)) !== null) {
     try {
-      const parsed = JSON.parse(objMatch[0]);
-      if (typeof parsed === "object" && parsed !== null) {
-        results.push(parsed);
-      }
-    } catch {
-      // Not valid JSON object
-    }
+      const p = JSON.parse(m[0]);
+      if (p && typeof p === "object") results.push(p);
+    } catch { /* skip */ }
   }
-  
   return results;
 }
 
-/* ────────────── helper: determine type from object ────────────── */
+/* ---------- category resolver ---------- */
 
-function determineType(obj: Record<string, unknown>): OutputEntry["type"] {
-  // Get the type/entity_type value (check first occurrence in JSON string if needed)
-  const typeValue = obj.type || obj.entity_type;
-  
-  if (typeof typeValue === "string") {
-    const normalized = typeValue.toLowerCase().trim();
-    
-    // Exact matches for category types
-    if (normalized === "product") return "product";
-    if (normalized === "component") return "component";
-    if (normalized === "resource") return "resource";
-    if (normalized === "security_zone" || normalized === "securityzone" || normalized === "zone") {
-      return "security_zone";
-    }
-  }
-  
-  // Check ID prefix patterns
+function resolveCategory(obj: Record<string, unknown>): EntryCategory {
+  const raw = String(obj.type || obj.entity_type || "").toLowerCase().trim();
+  if (raw === "product") return "product";
+  if (raw === "component") return "component";
+  if (raw === "resource") return "resource";
+  if (["security_zone", "securityzone", "zone"].includes(raw)) return "security_zone";
+  if (["threat", "risk", "vulnerability"].includes(raw)) return "threat";
+
   const id = String(obj.id || "").toUpperCase();
   if (id.startsWith("PROD")) return "product";
   if (id.startsWith("COMP")) return "component";
   if (id.startsWith("RES")) return "resource";
   if (id.startsWith("ZONE")) return "security_zone";
-  
-  // Check for unique identifying fields
   if ("trust_level" in obj) return "security_zone";
   if ("parent_product" in obj) return "component";
-  if ("location" in obj && !("trust_level" in obj)) return "resource";
-  if ("status" in obj && !("parent_product" in obj) && !("location" in obj)) return "product";
-  
+
   return "info";
 }
 
-/* ────────────── helper: extract name ────────────── */
+/* ---------- name resolver ---------- */
 
-function extractName(obj: Record<string, unknown>): string {
-  const nameFields = ["name", "title", "label"];
-  
-  for (const field of nameFields) {
-    const value = obj[field];
-    if (value && typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
+function resolveName(obj: Record<string, unknown>): string {
+  for (const k of ["name", "title", "label"]) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
   }
-  
-  const id = obj.id;
-  if (id && typeof id === "string") {
-    return id;
-  }
-  
-  return "Unnamed Entry";
+  if (typeof obj.id === "string") return obj.id;
+  return "Unnamed";
 }
 
-/* ────────────── helper: extract details - handle duplicate type keys ────────────── */
+/* ---------- flatten details ---------- */
 
-function extractDetails(
-  obj: Record<string, unknown>, 
-  categoryType: OutputEntry["type"]
+function flattenDetails(
+  obj: Record<string, unknown>,
 ): Record<string, string | number | boolean | null> {
-  const details: Record<string, string | number | boolean | null> = {};
-  
-  // Map of category-specific "type" field names
-  const typeFieldMap: Record<string, string> = {
-    component: "component_type",
-    resource: "resource_type",
-  };
-  
-  for (const [key, value] of Object.entries(obj)) {
-    // Handle the "type" field specially - it might be category OR subtype
-    if (key === "type" || key === "entity_type") {
-      const strValue = String(value).toLowerCase();
-      const isCategoryType = ["product", "component", "resource", "security_zone", "securityzone", "zone"].includes(strValue);
-      
-      // If it's NOT a category type, it's a subtype (like "Microservice", "Database")
-      if (!isCategoryType && typeof value === "string") {
-        const fieldName = typeFieldMap[categoryType] || "subtype";
-        details[fieldName] = value;
-      }
-      continue;
-    }
-    
-    if (value === null || value === undefined) {
-      details[key] = null;
-    } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      details[key] = value;
-    } else if (typeof value === "object") {
-      details[key] = JSON.stringify(value);
-    }
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (["name", "title", "label"].includes(k)) continue;
+    if (v === null || v === undefined) out[k] = null;
+    else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[k] = v;
+    else out[k] = JSON.stringify(v);
   }
-  
-  return details;
+  return out;
 }
 
-/* ────────────── helper: create unique key for deduplication ────────────── */
+/* ---------- full parse pipeline ---------- */
 
-function createEntryKey(type: string, name: string, details: Record<string, unknown>): string {
-  const id = details.id || "";
-  return `${type}:${name}:${id}`.toLowerCase();
-}
-
-/* ────────────── helper: parse agent response ────────────── */
-
-function parseAgentResponse(response: string): Omit<OutputEntry, "id" | "timestamp">[] {
+function parseAgentResponse(
+  response: string,
+): Omit<OutputEntry, "id" | "timestamp">[] {
   const entries: Omit<OutputEntry, "id" | "timestamp">[] = [];
-  const seenKeys = new Set<string>();
-  
-  const jsonObjects = extractJSON(response);
-  
-  for (const obj of jsonObjects) {
-    const record = obj as Record<string, unknown>;
-    const categoryType = determineType(record);
-    const name = extractName(record);
-    const details = extractDetails(record, categoryType);
-    
-    const key = createEntryKey(categoryType, name, details);
-    
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
-      entries.push({ type: categoryType, name, details });
-    }
+  const seen = new Set<string>();
+
+  // Structured JSON
+  for (const obj of extractJSON(response)) {
+    const category = resolveCategory(obj);
+    const name = resolveName(obj);
+    const details = flattenDetails(obj);
+    const key = `${category}::${name}::${details.id ?? ""}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ category, name, details });
   }
-  
-  if (entries.length > 0) {
-    return entries;
-  }
-  
-  // Fallback: Pattern-based parsing
-  const patterns = [
-    { regex: /\*\*Product\*\*:\s*(.+?)(?:\n|$)/gi, type: "product" as const },
-    { regex: /\*\*Component\*\*:\s*(.+?)(?:\n|$)/gi, type: "component" as const },
-    { regex: /\*\*Resource\*\*:\s*(.+?)(?:\n|$)/gi, type: "resource" as const },
-    { regex: /\*\*Security Zone\*\*:\s*(.+?)(?:\n|$)/gi, type: "security_zone" as const },
+  if (entries.length) return entries;
+
+  // Markdown patterns
+  const patterns: { re: RegExp; cat: EntryCategory }[] = [
+    { re: /\*\*Product\*\*:\s*(.+?)(?:\n|$)/gi, cat: "product" },
+    { re: /\*\*Component\*\*:\s*(.+?)(?:\n|$)/gi, cat: "component" },
+    { re: /\*\*Resource\*\*:\s*(.+?)(?:\n|$)/gi, cat: "resource" },
+    { re: /\*\*Security Zone\*\*:\s*(.+?)(?:\n|$)/gi, cat: "security_zone" },
+    { re: /\*\*Threat\*\*:\s*(.+?)(?:\n|$)/gi, cat: "threat" },
   ];
-
-  for (const { regex, type } of patterns) {
-    let match;
-    while ((match = regex.exec(response)) !== null) {
-      const value = match[1].trim();
-      if (value) {
-        const name = value.split(" - ")[0] || value;
-        const key = createEntryKey(type, name, {});
-        
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          entries.push({
-            type,
-            name,
-            details: value.includes(" - ") 
-              ? { description: value.split(" - ").slice(1).join(" - ") }
-              : {},
-          });
-        }
-      }
+  for (const { re, cat } of patterns) {
+    let pm: RegExpExecArray | null;
+    while ((pm = re.exec(response)) !== null) {
+      const raw = pm[1].trim();
+      if (!raw) continue;
+      const name = raw.split(" - ")[0];
+      const desc = raw.includes(" - ") ? raw.split(" - ").slice(1).join(" - ") : undefined;
+      const key = `${cat}::${name}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ category: cat, name, details: desc ? { description: desc } : {} });
     }
   }
+  if (entries.length) return entries;
 
-  if (entries.length === 0 && response.trim().length > 0) {
-    const lines = response.split("\n").filter(l => l.trim());
-    const summary = lines[0]?.substring(0, 150) || response.substring(0, 150);
-    
-    if (summary.trim()) {
-      entries.push({
-        type: "info",
-        name: "Agent Response",
-        details: { summary: summary + (summary.length >= 150 ? "..." : "") },
-      });
-    }
+  // Fallback — info summary
+  if (response.trim()) {
+    const preview =
+      response.trim().length > 220
+        ? response.trim().slice(0, 220) + "…"
+        : response.trim();
+    entries.push({ category: "info", name: "Agent Response", details: { summary: preview } });
   }
-
   return entries;
 }
 
-/* ────────────── provider component ────────────── */
+/* ════════════════════════════════════════════════════════════
+   Provider
+   ════════════════════════════════════════════════════════════ */
 
 export function OutputProvider({ children }: { children: ReactNode }) {
-  const [outputs, setOutputs] = useState<OutputEntry[]>([]);
+  const [entries, setEntries] = useState<OutputEntry[]>([]);
 
-  const addOutput = useCallback((entry: Omit<OutputEntry, "id" | "timestamp">) => {
-    const newEntry: OutputEntry = {
-      ...entry,
-      id: generateId(),
-      timestamp: new Date(),
-    };
-    setOutputs((prev) => [...prev, newEntry]);
+  const addEntry = useCallback(
+    (entry: Omit<OutputEntry, "id" | "timestamp">) => {
+      setEntries((prev) => [{ ...entry, id: uid(), timestamp: new Date() }, ...prev]);
+    },
+    [],
+  );
+
+  const removeEntry = useCallback((id: string) => {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
-  const clearOutputs = useCallback(() => {
-    setOutputs([]);
-  }, []);
+  const clearAll = useCallback(() => setEntries([]), []);
 
-  const parseAndAddFromResponse = useCallback((response: string) => {
+  const parseResponse = useCallback((response: string) => {
     const parsed = parseAgentResponse(response);
-    
-    const newEntries = parsed.map((entry) => ({
-      ...entry,
-      id: generateId(),
-      timestamp: new Date(),
-    }));
-    
-    if (newEntries.length > 0) {
-      setOutputs((prev) => [...prev, ...newEntries]);
-    }
+    if (!parsed.length) return;
+    const now = new Date();
+    const batch = parsed.map((e) => ({ ...e, id: uid(), timestamp: now }));
+    setEntries((prev) => [...batch, ...prev]);
   }, []);
 
   return (
-    <OutputContext.Provider value={{ outputs, addOutput, clearOutputs, parseAndAddFromResponse }}>
+    <OutputContext.Provider value={{ entries, addEntry, removeEntry, clearAll, parseResponse }}>
       {children}
     </OutputContext.Provider>
   );
 }
 
-/* ────────────── hook ────────────── */
+/* ════════════════════════════════════════════════════════════
+   Hook
+   ════════════════════════════════════════════════════════════ */
 
 export function useOutput() {
-  const context = useContext(OutputContext);
-  if (!context) {
-    throw new Error("useOutput must be used within an OutputProvider");
-  }
-  return context;
+  const ctx = useContext(OutputContext);
+  if (!ctx) throw new Error("useOutput must be used inside <OutputProvider>");
+  return ctx;
 }
