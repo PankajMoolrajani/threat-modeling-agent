@@ -47,15 +47,15 @@ nodes:
   
   
   # Control Conditions
-  - id: resource_type_is_generic_api_service
+  - id: resource_type_is_generic_api
     labels: 
       - ControlCondition
     properties:
       kind: control_condition
-      id: resource_type_is_generic_api_service
-      name: Resource Type is Generic API Service
+      id: resource_type_is_generic_api
+      name: Resource Type is Generic API 
       node.type: Resource
-      node.relation.of_type: generic_api_service
+      node.relation.of_type: generic_api
 
   - id: generic_api_publicly_accessible
     labels: 
@@ -65,7 +65,7 @@ nodes:
       id: generic_api_publicly_accessible
       name: Generic API is Publicly Accessible
       node.type: Resource
-      node.relation.of_type: generic_api_service
+      node.relation.of_type: generic_api
 
   - id: resource_has_customer_pii_data_asset
     labels: 
@@ -88,49 +88,85 @@ nodes:
       name: Generic API is Publicly Accessible Rule
 
       
-  - id: generic_api_service_has_customer_pii_data
+  - id: generic_api_has_customer_pii_data
     labels:
       - ControlRule
     properties:
       kind: control_rule
-      id: generic_api_service_has_customer_pii_data
+      id: generic_api_has_customer_pii_data
       name: Generic API Service has Customer PII Data
 
 
-
+  - id: resource_type_is_generic_api
+    labels:
+      - ControlRule
+    properties:
+      kind: control_rule
+      id: resource_type_is_generic_api
+      name: Resource Type is Generic API Service
+     
 
 
 relationships:
+
+  # Control Rule - When resource is of type generic api
+
+  ## Control Conditions
+  - relation_type: HAS_CONTROL_CONDITION
+    source_node_type: control_rule
+    source_node_id: resource_type_is_generic_api
+    target_node_type: control_condition
+    target_node_id: resource_type_is_generic_api
+  
+  ## Controls
+  - relation_type: REQUIRES_CONTROL
+    source_node_type: control_rule
+    source_node_id: resource_type_is_generic_api
+    target_node_type: control
+    target_node_id: api_authentication
+  
+  - relation_type: REQUIRES_CONTROL
+    source_node_type: control_rule
+    source_node_id: resource_type_is_generic_api
+    target_node_type: control
+    target_node_id: api_authorization
+  
+  - relation_type: REQUIRES_CONTROL
+    source_node_type: control_rule
+    source_node_id: resource_type_is_generic_api
+    target_node_type: control
+    target_node_id: rbac
+
   # Control Rule - When resource is of type generic api service and has customer pii data.
   
   ## Control Conditions
   - relation_type: HAS_CONTROL_CONDITION
     source_node_type: control_rule
-    source_node_id: generic_api_service_has_customer_pii_data
+    source_node_id: generic_api_has_customer_pii_data
     target_node_type: control_condition
-    target_node_id: resource_type_is_generic_api_service
+    target_node_id: resource_type_is_generic_api
     
   - relation_type: HAS_CONTROL_CONDITION
     source_node_type: control_rule
-    source_node_id: generic_api_service_has_customer_pii_data
+    source_node_id: generic_api_has_customer_pii_data
     target_node_type: control_condition
     target_node_id: resource_has_customer_pii_data_asset
 
   ## Controls
   - relation_type: REQUIRES_CONTROL
     source_node_type: control_rule
-    source_node_id: generic_api_service_has_customer_pii_data
+    source_node_id: generic_api_has_customer_pii_data
     target_node_type: control
     target_node_id: api_authentication
   
   - relation_type: REQUIRES_CONTROL
     source_node_type: control_rule
-    source_node_id: generic_api_service_has_customer_pii_data
+    source_node_id: generic_api_has_customer_pii_data
     target_node_type: control
     target_node_id: api_authorization
   
   - relation_type: REQUIRES_CONTROL
     source_node_type: control_rule
-    source_node_id: generic_api_service_has_customer_pii_data
+    source_node_id: generic_api_has_customer_pii_data
     target_node_type: control
     target_node_id: rbac

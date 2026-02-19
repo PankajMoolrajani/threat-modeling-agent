@@ -80,17 +80,38 @@ def sync_nodes(session, nodes: list) -> tuple[int, int]:
     return created, updated
 
 
+def _snake_to_pascal(s: str) -> str:
+    """Convert snake_case to PascalCase (e.g., 'control_rule' -> 'ControlRule').
+    If already PascalCase (no underscores, starts with uppercase), returns as-is.
+    Single lowercase words are capitalized."""
+    s = s.strip()
+    if not s:
+        return s
+    # If contains underscores, convert snake_case to PascalCase
+    if '_' in s:
+        return ''.join(word.capitalize() for word in s.split('_'))
+    # If already starts with uppercase, assume it's PascalCase
+    if s[0].isupper():
+        return s
+    # Single lowercase word - capitalize it
+    return s.capitalize()
+
+
 def _relationship_match_clauses(
     src_label: str | None, tgt_label: str | None
 ) -> tuple[str, str]:
     """Return (a_pattern, b_pattern) for MATCH using labels when provided."""
     if src_label:
-        safe_src = _safe_label(src_label.strip())
+        # Convert snake_case to PascalCase to match node labels
+        pascal_src = _snake_to_pascal(src_label.strip())
+        safe_src = _safe_label(pascal_src)
         a_pattern = f"(a:{safe_src} {{id: $src_id}})"
     else:
         a_pattern = "(a {id: $src_id})"
     if tgt_label:
-        safe_tgt = _safe_label(tgt_label.strip())
+        # Convert snake_case to PascalCase to match node labels
+        pascal_tgt = _snake_to_pascal(tgt_label.strip())
+        safe_tgt = _safe_label(pascal_tgt)
         b_pattern = f"(b:{safe_tgt} {{id: $tgt_id}})"
     else:
         b_pattern = "(b {id: $tgt_id})"

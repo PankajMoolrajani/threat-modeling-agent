@@ -9,8 +9,7 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - ./src:/app
-      - ./data/init:/app/data/init
+      - ./:/app
     command: ["sleep", "infinity"]
     environment:
       - POSTGRES_HOST=postgres
