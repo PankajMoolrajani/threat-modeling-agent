@@ -18,7 +18,7 @@ except ImportError:
     sys.exit(1)
 
 
-# For resolving relative paths (repo root or app root when run as src/scripts/sync_controls.py)
+# For resolving relative paths (repo root when run as scripts/sync_controls.py, or app root when run as src/scripts/sync_controls.py)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Env vars (same as docker-compose / check_connectivity)
@@ -76,7 +76,7 @@ def sync_nodes(session, nodes: list) -> tuple[int, int]:
 
 
 def sync_relationships(session, relationships: list) -> int:
-    """Match source and target nodes by id, MERGE the relationship. Returns count of relationships ensured."""
+    """Match source and target nodes by label + id, MERGE the relationship. Returns count of relationships ensured."""
     count = 0
     for rel in relationships:
         rel_type = (rel.get("relation_type") or "").strip().upper().replace(" ", "_")
@@ -86,12 +86,24 @@ def sync_relationships(session, relationships: list) -> int:
         tgt_id = rel.get("target_node_id")
         if not src_id or not tgt_id:
             continue
-        # MATCH (a {id: $src_id}), (b {id: $tgt_id}) MERGE (a)-[r:REL_TYPE]->(b)
-        query = (
-            "MATCH (a {id: $src_id}), (b {id: $tgt_id}) "
-            f"MERGE (a)-[r:{rel_type}]->(b) "
-            "RETURN 1 AS x"
-        )
+        # Use source_node_type / target_node_type so we don't match wrong nodes when the same id is used for different labels (e.g. Component and Resource)
+        src_label = (rel.get("source_node_type") or "").strip()
+        tgt_label = (rel.get("target_node_type") or "").strip()
+        src_label = _safe_label(src_label) if src_label else ""
+        tgt_label = _safe_label(tgt_label) if tgt_label else ""
+        if not src_label or not tgt_label:
+            # Fallback: match by id only (same as before)
+            query = (
+                "MATCH (a {id: $src_id}), (b {id: $tgt_id}) "
+                f"MERGE (a)-[r:{rel_type}]->(b) "
+                "RETURN 1 AS x"
+            )
+        else:
+            query = (
+                f"MATCH (a:{src_label} {{id: $src_id}}), (b:{tgt_label} {{id: $tgt_id}}) "
+                f"MERGE (a)-[r:{rel_type}]->(b) "
+                "RETURN 1 AS x"
+            )
         session.run(query, src_id=src_id, tgt_id=tgt_id)
         count += 1
     return count

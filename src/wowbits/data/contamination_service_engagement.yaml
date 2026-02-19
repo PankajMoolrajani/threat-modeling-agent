@@ -1,0 +1,129 @@
+nodes: 
+  - id: security_review_contamination_service
+    labels: 
+      - Engagement
+    properties:
+      kind: engagement
+      id: security_review_contamination_service
+      name: Security Review Contamination Service
+      description: A service that reviews the contamination of the system.
+      goal: To review the contamination of the system.
+  
+  - id: contamination_detection_api
+    labels: 
+      - Component
+    properties:
+      kind: component
+      id: contamination_detection_api
+      name: Contamination Detection API
+      description: An API that detects contamination in garabage trucks.
+    
+  - id: contamination_detection_api
+    labels: 
+      - Resource
+    properties:
+      kind: resource
+      id: contamination_detection_api
+      name: Contamination Detection API
+      description: An API that detects contamination in garabage trucks.
+
+  - id: contamination_db
+    labels: 
+      - Resource
+    properties:
+      kind: resource
+      id: contamination_db
+      name: Contamination DB
+      description: A database that stores the contamination data.
+      resource_type: database
+      component_id: contamination_detection_api
+
+  - id: fleet_webapp
+    labels: 
+      - Component
+    properties:
+      kind: component
+      id: fleet_webapp
+      name: Fleet Web Application
+      description: A web application that provides a user interface for contamination detection.
+
+  - id: fleet_webapp
+    labels: 
+      - Resource
+    properties:
+      kind: resource
+      id: fleet_webapp
+      name: Fleet Web Application
+      description: A web application that provides a user interface for contamination detection.
+  
+
+relationships:
+  # REVIEWS_RESOURCE relationship between Engagement and Resources
+  - source_node_type: Enagement
+    source_node_id: security_review_contamination_service
+    target_node_type: Resource
+    target_node_id: contamination_detection_api
+    relation_type: REVIEWS_RESOURCE
+    
+  - source_node_type: Engagement
+    source_node_id: security_review_contamination_service
+    target_node_type: Resource
+    target_node_id: contamination_db
+    relation_type: REVIEWS_RESOURCE
+
+  - source_node_type: Engagement
+    source_node_id: security_review_contamination_service
+    target_node_type: Resource
+    target_node_id: fleet_webapp
+    relation_type: REVIEWS_RESOURCE
+
+  # HAS_RESOURCE relationship between Component and Resources
+  - source_node_type: Component
+    source_node_id: contamination_detection_api
+    target_node_type: Resource
+    target_node_id: contamination_detection_api
+    relation_type: HAS_RESOURCE
+
+  - source_node_type: Component
+    source_node_id: contamination_detection_api
+    target_node_type: Resource
+    target_node_id: contamination_db
+    relation_type: HAS_RESOURCE
+
+  - source_node_type: Component
+    source_node_id: fleet_webapp
+    target_node_type: Resource
+    target_node_id: fleet_webapp
+    relation_type: HAS_RESOURCE
+
+  # OF_RESOURCE_TYPE relationship between Resource and ResourceType
+  - source_node_type: Resource
+    source_node_id: contamination_detection_api
+    target_node_type: ResourceType
+    target_node_id: generic_api
+    relation_type: OF_RESOURCE_TYPE
+
+  - source_node_type: Resource
+    source_node_id: contamination_db
+    target_node_type: ResourceType
+    target_node_id: generic_db
+    relation_type: OF_RESOURCE_TYPE
+
+  - source_node_type: Resource
+    source_node_id: fleet_webapp
+    target_node_type: ResourceType
+    target_node_id: generic_webapp
+    relation_type: OF_RESOURCE_TYPE
+
+  # TALKS_TO relationship between Resources
+  - source_node_type: Resource
+    source_node_id: contamination_detection_api
+    target_node_type: Resource
+    target_node_id: contamination_db
+    relation_type: TALKS_TO
+
+  - source_node_type: Resource
+    source_node_id: fleet_webapp
+    target_node_type: Resource
+    target_node_id: contamination_detection_api
+    relation_type: TALKS_TO

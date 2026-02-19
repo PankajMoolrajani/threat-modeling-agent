@@ -1,5 +1,5 @@
 ---
-kind: agent
+kind: wowbits_agent
 name: threat_modeler_v6
 description: >
   ThreatModelerV6 is an enterprise-grade Security Architecture agent that
@@ -100,7 +100,7 @@ instructions: |
 
 ---
 
-kind: tool
+kind: wowbits_tool
 name: neo4j_cypher_mcp
 type: MCP_SERVER
 description: Execute Cypher queries against the Neo4j graph database
@@ -113,7 +113,7 @@ config:
 
 ---
 
-kind: skill
+kind: wowbits_skill
 name: greetings
 description: >
   Greet the user and introduce yourself.
@@ -131,7 +131,7 @@ instructions: |
 
 ---
 
-kind: skill
+kind: wowbits_skill
 name: engagement_context
 description: >
   Define the engagement context for a threat modeling review, including the
@@ -155,10 +155,11 @@ instructions: |
   - Do not ask the user to select an engagement if there are no existing engagements.
   - Do not force the user to tell you resources until they have listed out the resources under each component.
   - When user provides goal and description, improve the language and make it better and confirm with user before pushing it to the database.
+  - When asked to share show the architecture in scope, query all the resources in review of the engagement and associated components and products and then present the architecture in scope.
 
 ---
 
-kind: skill
+kind: wowbits_skill
 name: system_architecture
 description: >
   Capture the system architecture for the engagement, including the products, components and resources.

@@ -10,6 +10,7 @@ services:
     tty: true
     volumes:
       - ./src:/app
+      - ./data/init:/app/data/init
     command: ["sleep", "infinity"]
     environment:
       - POSTGRES_HOST=postgres
