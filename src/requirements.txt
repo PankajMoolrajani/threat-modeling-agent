@@ -1,4 +1,4 @@
-wowbits-cli==0.1.0a6
+wowbits-cli==0.1.0a7
 psycopg-binary==3.3.2
 psycopg-pool==3.3.0
 neo4j>=5.14.0

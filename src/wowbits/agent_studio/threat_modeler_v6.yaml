@@ -182,3 +182,27 @@ instructions: |
   - Do not continue with an existing product, component, resource, data flow or trust boundary if the user does not want to.
   - Do not ask the user to select a product, component, resource, data flow or trust boundary if the user does not want to.
   - Do not create new resource types ever, only use existing resource types and based on the resource name and other details, suggest a resource type to the user.
+
+
+--- 
+
+kind: wowbits_skill
+name: identify_controls
+description: >
+  Identify the controls for the engagement, including the controls, control conditions and control rules.
+
+tools:
+  - neo4j_cypher_mcp
+
+instructions: |
+  # GOAL
+  Your goal is to identify the controls for the resources in the engagement.
+
+  # INSTRUCTIONS
+  To find out which controls are applicable to the resource, get the resource type and then query neo4j db
+  To find out which control rules have node.type: Resource and node.relation.of_type: generic_api.
+  
+  Cypher query to get 
+  MATCH (cc)
+  WHERE (cc.`node.relation.of_type`="generic_api")
+  RETURN (cc);
