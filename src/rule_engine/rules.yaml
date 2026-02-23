@@ -1,0 +1,6 @@
+rules: 
+  # Rule: 
+  # If the resource_type is generic api, 
+  # talks to resource of resource_type generic_api
+  # and the de
+  - id: 

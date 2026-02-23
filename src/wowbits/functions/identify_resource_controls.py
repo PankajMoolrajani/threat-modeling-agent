@@ -28,7 +28,7 @@ def get_resource_and_type(resource_id: str):
     driver = get_driver()
     try:
         with driver.session() as session:
-            rel = "OF_TYPE"
+            rel = "OF_RESOURCE_TYPE"
             query = (
                 f"MATCH (r:Resource {{id: $resource_id}})-[:{rel}]-(rt:ResourceType) "
                 "RETURN r, rt"
@@ -42,18 +42,45 @@ def get_resource_and_type(resource_id: str):
     finally:
         driver.close()
 
-def get_control_conditions(resource_type: str) -> list[str]:
+def get_control_conditions_by_resource_type(resource_type: str) -> list[str]:
     """Get the control conditions for the resource type."""
     driver = get_driver()
     try:
         with driver.session() as session:
             query = """
                 MATCH (cc:ControlCondition)
-                WHERE cc.`node.relation.of_type` = $resource_type
+                WHERE cc.`node.relation.of_resource_type` = $resource_type
                 RETURN cc
             """
             result = session.run(query, resource_type=resource_type)
-            return [record["cc"] for record in result if record.get("cc")]
+            return [record["cc"]["id"] for record in result if record.get("cc")]
+    finally:
+        driver.close()
+
+def get_control_conditions_by_asset_type(resource_id: str) -> list[str]:
+    """Get the control conditions for the resource based on the asset type."""
+    driver = get_driver()
+    try:
+        with driver.session() as session:
+            # First, get the asset types for the resource
+            query = """
+                MATCH (r:Resource {id: $resource_id})-[:HAS_ASSET]->(a:Asset)-[:OF_ASSET_TYPE]->(at:AssetType)
+                RETURN at.id as asset_type_id
+            """
+            result = session.run(query, resource_id=resource_id)
+            asset_type_ids = [record["asset_type_id"] for record in result if record.get("asset_type_id")]
+            
+            if not asset_type_ids:
+                return []
+            
+            # Then, get control conditions that match these asset types
+            query = """
+                MATCH (cc:ControlCondition)
+                WHERE cc.`node.relation.of_asset_type` IN $asset_type_ids
+                RETURN cc
+            """
+            result = session.run(query, asset_type_ids=asset_type_ids)
+            return [record["cc"]["id"] for record in result if record.get("cc") and record["cc"].get("id")]
     finally:
         driver.close()
 
@@ -61,6 +88,7 @@ def get_control_rules(condition_ids: list[str]) -> list[str]:
     """Get the control rules for the condition ids."""
     driver = get_driver()
     try:
+        applicable_rule_ids = []
         for condition_id in condition_ids:
             with driver.session() as session:
                 query = f"""
@@ -69,7 +97,7 @@ def get_control_rules(condition_ids: list[str]) -> list[str]:
                 """
                 result = session.run(query, condition_id=condition_id)
                 all_control_rules = [record["cr"] for record in result if record.get("cr")]
-                applicable_rule_ids = []
+                
                 for cr in all_control_rules:
                     rule_id = cr.get("id")
                     print (f"Rule ID: {rule_id}")
@@ -82,7 +110,6 @@ def get_control_rules(condition_ids: list[str]) -> list[str]:
                     print (f"Rule Control Condition IDs: {rule_control_condition_ids}")
                     if all(cond_id in condition_ids for cond_id in rule_control_condition_ids):
                         applicable_rule_ids.append(cr.get("id"))
-                    print (f"Applicable Rule IDs: {applicable_rule_ids}")
                     
         return applicable_rule_ids
     finally:
@@ -99,10 +126,8 @@ def get_controls(control_rule_ids: list[str]) -> list[str]:
                     MATCH (cr:ControlRule {id: $control_rule_id})-[:REQUIRES_CONTROL]-(c:Control)
                     RETURN c
                 """
-                print (f"Query: {query}")
                 result = session.run(query, control_rule_id=control_rule_id)
                 control_ids = [record["c"].get("id") for record in result if record.get("c") and record["c"].get("id")]
-                print (f"Control IDs: {control_ids}")
                 return control_ids
     finally:
         driver.close()
@@ -125,10 +150,14 @@ def main(resource):
         return []
     
     resource_type_id = resource_type_obj.get("id")
-    control_conditions = get_control_conditions(resource_type_id)
-    condition_ids = [cc.get("id") for cc in control_conditions if cc and cc.get("id")]
+    condition_ids_by_resource_type = get_control_conditions_by_resource_type(resource_type_id)
+    condition_ids_by_asset_type = get_control_conditions_by_asset_type(resource_id)
+    print (f"Condition IDs by Resource Type: {condition_ids_by_resource_type}")
+    print (f"Condition IDs by Asset Type: {condition_ids_by_asset_type}")
+    condition_ids = list(set(condition_ids_by_resource_type + condition_ids_by_asset_type))
     print (f"Condition IDs: {condition_ids}")
     control_rule_ids= get_control_rules(condition_ids)
+    print (f"Control Rule IDs: {control_rule_ids}")
     controls = get_controls(control_rule_ids)
     print (f"Controls: {controls}")
     return controls
